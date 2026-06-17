@@ -1,6 +1,7 @@
 
-##Dynakube.yaml should be downloaded in dynatrace after generating Dynatrace Token and Data ingest token in Kubernetes page while connecting the EKS cluster
+# Important
 
+## Download the DynaKube.yaml file from Dynatrace after generating the Dynatrace API Token and Data Ingest Token from the Kubernetes Monitoring page while connecting the AWS EKS cluster.
 
 
 apiVersion: v1
