@@ -1,0 +1,300 @@
+DYNATRACE + AKS + EASYTRADE AUTO-REMEDIATION FULL DOCUMENTATION
+
+========================================================
+
+1. CREATE AKS CLUSTER
+   ========================================================
+
+Login to Azure
+
+az login
+
+Set Subscription
+
+az account set --subscription "<subscription-name>"
+
+Create Resource Group
+
+az group create --name dt-demo-rg --location eastus
+
+Create AKS Cluster
+
+az aks create 
+--resource-group dt-demo-rg 
+--name dt-demo-cluster 
+--node-count 2 
+--node-vm-size Standard_D2s_v5 
+--generate-ssh-keys
+
+Connect to Cluster
+
+az aks get-credentials 
+--resource-group dt-demo-rg 
+--name dt-demo-cluster
+
+Validate Cluster
+
+kubectl get nodes
+
+========================================================
+2. INSTALL HELM
+===============
+
+Install Helm
+
+curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+Verify
+
+helm version
+
+========================================================
+3. INSTALL DYNATRACE OPERATOR
+=============================
+
+Create Namespace
+
+kubectl create namespace dynatrace
+
+Add Helm Repo
+
+helm repo add dynatrace https://raw.githubusercontent.com/Dynatrace/helm-charts/master/repos/stable
+
+Update Repo
+
+helm repo update
+
+Create Secret
+
+kubectl -n dynatrace create secret generic dynakube 
+--from-literal="apiToken=<DT_API_TOKEN>" 
+--from-literal="dataIngestToken=<DT_INGEST_TOKEN>"
+
+Install Operator
+
+helm install dynatrace-operator dynatrace/dynatrace-operator -n dynatrace
+
+Verify
+
+kubectl get pods -n dynatrace
+
+Apply Dynakube YAML
+
+kubectl apply -f dynakube.yaml
+
+========================================================
+4. DEPLOY EASYTRADE
+===================
+
+Clone Repository
+
+git clone https://github.com/Dynatrace/easytrade.git
+
+Move into Directory
+
+cd easytrade
+
+Deploy Application
+
+kubectl apply -f kubernetes-manifests/
+
+Verify Deployment
+
+kubectl get pods -n easytrade
+
+Check Services
+
+kubectl get svc -n easytrade
+
+========================================================
+5. CREATE AUTOMATION API
+========================
+
+Create Python File
+
+nano app.py
+
+Paste:
+
+from flask import Flask, request, jsonify
+import subprocess
+
+app = Flask(**name**)
+
+def run_command(cmd):
+try:
+result = subprocess.check_output(
+cmd,
+shell=True,
+stderr=subprocess.STDOUT
+)
+return result.decode()
+except subprocess.CalledProcessError as e:
+return e.output.decode()
+
+@app.route('/remediate', methods=['POST'])
+def remediate():
+
+```
+data = request.get_json(force=True)
+
+issue_type = data.get("issue_type", "unknown")
+
+if issue_type == "failure":
+
+    run_command(
+        "kubectl scale deployment easytrade-frontendreverseproxy -n easytrade --replicas=1"
+    )
+
+    run_command(
+        "kubectl rollout restart deployment easytrade-frontendreverseproxy -n easytrade"
+    )
+
+    return jsonify({
+        "status": "frontend_restored_and_restarted"
+    })
+
+return jsonify({
+    "status": "unknown_issue_type"
+}), 400
+```
+
+@app.route('/')
+def home():
+return "Dynatrace Auto-Remediation API Running"
+
+if **name** == '**main**':
+app.run(host='0.0.0.0', port=5000)
+
+Save
+
+CTRL+X
+Y
+ENTER
+
+Install Flask
+
+pip install --user flask
+
+========================================================
+6. CREATE DOCKERFILE
+====================
+
+nano Dockerfile
+
+Paste:
+
+FROM python:3.10-slim
+
+WORKDIR /app
+
+COPY app.py .
+
+RUN apt-get update && apt-get install -y curl
+
+RUN curl -LO "https://dl.k8s.io/release/v1.29.0/bin/linux/amd64/kubectl" 
+&& chmod +x kubectl 
+&& mv kubectl /usr/local/bin/
+
+RUN pip install --user flask
+
+CMD ["python", "app.py"]
+
+========================================================
+7. CREATE REMEDIATION YAML
+==========================
+
+nano remediation.yaml
+
+Paste remediation.yaml content
+
+Verify Files
+
+ls -l
+
+Apply
+
+kubectl apply -f remediation.yaml
+
+========================================================
+8. RUN PYTHON API
+=================
+
+Open New Session
+
+Run
+
+python app.py
+
+========================================================
+9. VALIDATE PODS
+================
+
+kubectl get pods -n easytrade
+
+Confirm:
+
+easytrade-frontendreverseproxy exists
+
+========================================================
+10. SIMULATE FAILURE
+====================
+
+kubectl scale deployment easytrade-frontendreverseproxy 
+-n easytrade 
+--replicas=0
+
+========================================================
+11. VERIFY FAILURE
+==================
+
+kubectl get pods -n easytrade
+
+frontendreverseproxy should disappear
+
+========================================================
+12. DYNATRACE VALIDATION
+========================
+
+Go to Dynatrace
+
+Synthetic Monitor
+→ Availability should fail
+
+Run Workflow
+→ Click Run
+→ Click Run again
+
+========================================================
+13. AUTO REMEDIATION VALIDATION
+===============================
+
+After RCA email arrives
+
+Run
+
+kubectl get pods -n easytrade
+
+Expected Result:
+
+easytrade-frontendreverseproxy should be restored automatically
+
+========================================================
+SUCCESS CRITERIA
+================
+
+Cluster deployed
+
+Dynatrace operator installed
+
+EasyTrade running
+
+Synthetic failure detected
+
+Workflow triggered
+
+RCA mail received
+
+Frontend auto-restored
+
+End-to-End Auto Remediation Successful
